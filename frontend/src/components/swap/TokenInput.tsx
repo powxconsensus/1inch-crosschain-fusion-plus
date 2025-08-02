@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { ChevronDown } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
-import { Chain, ChainConfig } from '@/types/chain';
+import { ChainConfig } from '@/types/chain';
 import { TOKENS } from '@/constants/chain';
 
 interface TokenInputProps {
@@ -12,13 +12,24 @@ interface TokenInputProps {
   onChange: (value: string) => void;
   side: 'from' | 'to';
   chainConfig: ChainConfig;
+  selectedToken: any;
+  onTokenChange: (token: any) => void;
+  readOnly?: boolean;
 }
 
-const TokenInput = ({ value, onChange, side, chainConfig }: TokenInputProps) => {
+const TokenInput = ({
+  value,
+  onChange,
+  side,
+  chainConfig,
+  selectedToken,
+  onTokenChange,
+  readOnly = false,
+}: TokenInputProps) => {
   const [open, setOpen] = useState(false);
-  const [selectedToken, setSelectedToken] = useState(TOKENS[chainConfig.id][0]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (readOnly) return;
     const value = e.target.value;
     if (value === '' || /^\d*\.?\d*$/.test(value)) {
       onChange(value);
@@ -33,7 +44,10 @@ const TokenInput = ({ value, onChange, side, chainConfig }: TokenInputProps) => 
           value={value}
           onChange={handleAmountChange}
           placeholder="0.0"
-          className="flex-1 bg-transparent text-3xl font-medium outline-none text-white placeholder-[#475569]"
+          readOnly={readOnly}
+          className={`flex-1 bg-transparent text-3xl font-medium outline-none text-white placeholder-[#475569] ${
+            readOnly ? 'cursor-not-allowed opacity-70' : ''
+          }`}
         />
         <Popover.Root open={open} onOpenChange={setOpen}>
           <Popover.Trigger asChild>
@@ -64,7 +78,7 @@ const TokenInput = ({ value, onChange, side, chainConfig }: TokenInputProps) => 
                       selectedToken.address === token.address ? 'bg-[#1e293b]' : ''
                     }`}
                     onClick={() => {
-                      setSelectedToken(token);
+                      onTokenChange(token);
                       setOpen(false);
                     }}
                   >

@@ -1,10 +1,14 @@
 'use client';
 
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { ConnectButton as SuiConnectButton, useWallet } from '@suiet/wallet-kit';
+import {
+  ConnectButton as SuiConnectButton,
+  useWallet,
+  WalletContextState,
+} from '@suiet/wallet-kit';
 import { useWalletStore } from '@/store/walletStore';
 import { ChainType } from '@/types/chain';
-import { useAccount } from 'wagmi';
+import { useAccount, useSendTransaction } from 'wagmi';
 import { useEffect } from 'react';
 
 const buttonStyle =
@@ -15,18 +19,30 @@ export default function WalletConnect() {
 
   // for handling for evm chain
   const { address, isConnected: isEvmConnected } = useAccount();
+  const { sendTransaction } = useSendTransaction();
 
   // for sui
-  const { address: suiAddress, connected: isSuiConnected } = useWallet();
+  const { address: suiAddress, connected: isSuiConnected, signAndExecuteTransaction } = useWallet();
 
   useEffect(() => {
     if (isEvmConnected && address) {
-      setConnected({ address, isConnected: isEvmConnected });
+      setConnected({ address, isConnected: isEvmConnected, transport: sendTransaction });
     }
     if (isSuiConnected && suiAddress) {
-      setConnected({ address: suiAddress, isConnected: isSuiConnected });
+      setConnected({
+        address: suiAddress,
+        isConnected: isSuiConnected,
+        transport: null, //signAndExecuteTransaction as any,
+      });
     }
-  }, [isEvmConnected, address, isSuiConnected, suiAddress]);
+  }, [
+    isEvmConnected,
+    address,
+    isSuiConnected,
+    suiAddress,
+    signAndExecuteTransaction,
+    sendTransaction,
+  ]);
 
   return activeChain?.chainType === ChainType.SUI ? (
     <div className={buttonStyle}>

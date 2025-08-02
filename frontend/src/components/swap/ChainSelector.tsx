@@ -10,10 +10,15 @@ import { CHAIN_CONFIGS } from '@/constants/chain';
 interface ChainSelectorProps {
   selectedChain: ChainConfig;
   onChainSelect: (chain: ChainConfig) => void;
+  excludeChain?: ChainConfig;
 }
 
-const ChainSelector = ({ selectedChain, onChainSelect }: ChainSelectorProps) => {
+const ChainSelector = ({ selectedChain, onChainSelect, excludeChain }: ChainSelectorProps) => {
   const [open, setOpen] = useState(false);
+
+  const availableChains = SUPPORTED_CHAINS.filter(
+    (chain) => !excludeChain || chain !== excludeChain.id,
+  );
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -40,7 +45,7 @@ const ChainSelector = ({ selectedChain, onChainSelect }: ChainSelectorProps) => 
           sideOffset={5}
         >
           <div className="space-y-1">
-            {SUPPORTED_CHAINS.map((chain) => (
+            {availableChains.map((chain) => (
               <button
                 key={chain}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#1e293b] transition-colors ${
