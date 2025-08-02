@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Locally hosted Clash Display font */
+
+@layer base {
+  :root {
+    --background: 245 247 250; /* #fcfcfc */
+    --background_secondary: 255 255 255; /* #f5f4ff */
+    --primary: 23 32 42; /* #000000 */
+    --secondary: 90 99 110; /* #94A3B8 */
+    --warning: 255 77 79; /* #ff4d4f */
+    --cta_color: 155 97 255; /* #9b61ff */
+    --border_color: 222 226 230;
+    --font-clash: 'Clash Display', sans-serif;
+  }
+
+  .dark {
+    --background: 16 23 42; /* #1e1f29 */
+    --background_secondary: 22 32 51; /* #2a2b38 */
+    --primary: 255 255 255; /* #ffffff */
+    --secondary: 155 163 175; /* #64748B */
+    --warning: 255 77 79; /* #ff4d4f */
+    --cta_color: 155 97 255; /* #9b61ff */
+    --border_color: 32 41 59;
+    --font-clash: 'Clash Display', sans-serif;
+  }
+
+  body {
+    @apply bg-background text-primary;
+  }
+}
+
+@theme inline {
+  --background: rgb(var(--background));
+  --primary: rgb(var(--primary));
+  --font-sans: var(--font-clash);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  scroll-behavior: smooth;
+  /* font-family: 'Clash Display', sans-serif; */
+  /* font-size: 100%; */
+}
+
+.font-ibm {
+  font-family: 'IBM Plex Serif';
+}
+
+.font-cascadia {
+  font-family: 'Cascadia Code';
+}
+
+.background-gradient {
+  background-image: 'linear-gradient(to right, #7a3fee, #3db3f7)';
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE/Edge */
+  scrollbar-width: none; /* Firefox */
+}
