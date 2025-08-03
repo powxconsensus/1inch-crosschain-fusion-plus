@@ -17,6 +17,35 @@ import { sleep } from "../scripts/helper/utils";
 import { SuiClient } from "@mysten/sui/client";
 dotenv.config();
 
+// Logging utilities
+const EXPLORERS: any = {
+  "43113": "https://testnet.snowtrace.io", // Avalanche testnet
+  "sui-testnet": "https://suiexplorer.com/txblock",
+};
+
+function logTx(chainId: string, txHash: string, description: string) {
+  console.log(`\n${description}:`);
+  console.log(`Hash: ${txHash}`);
+  console.log(`Explorer: ${EXPLORERS[chainId]}/${txHash}`);
+}
+
+function logStage(stage: string, data: any = null) {
+  console.log(`\n[${stage}]`);
+  if (data) console.log(JSON.stringify(data, null, 2));
+}
+
+function logOrderDetails(order: any) {
+  console.log("\n📋 Order Details:");
+  console.log(JSON.stringify(order, null, 2));
+}
+
+// Add new logging utility for order status
+function logOrderStatus(stage: string, details: any) {
+  console.log(`\n🔄 Stage: ${stage}`);
+  console.log("📊 Details:");
+  console.log(JSON.stringify(details, null, 2));
+}
+
 // for now takee is same address
 const taker = "0xc0c4896B41cEdfcad38aeEc69d8fb31D80896B2a";
 
@@ -28,11 +57,11 @@ const SAFETY_DEPOSIT = {
 let GLOBAL_ORDER: any = {};
 
 (async () => {
-  // Step 0: user will create secret key and hash lock it
-  const secret = ethers.hexlify(ethers.randomBytes(32)); // will kept private by the user
+  // Step 0: Generate hash lock
+  const secret = ethers.hexlify(ethers.randomBytes(32));
   const hashLock = ethers.keccak256(secret);
 
-  // Step 1: user will create order (this object from user (client side))
+  // Step 1: Order setup
   const orderRequest = {
     srcChainId: "43113",
     dstChainId: "sui-testnet",
@@ -66,7 +95,7 @@ let GLOBAL_ORDER: any = {};
     (BigInt(dstPublicWithdrawal) << 32n) |
     BigInt(dstWithdrawal);
 
-  // Generate order hash and secret
+  // Generate order hash
   const orderHash = ethers.keccak256(
     ethers.AbiCoder.defaultAbiCoder().encode(
       ["bytes", "uint256", "uint256", "bytes32"],
@@ -79,7 +108,7 @@ let GLOBAL_ORDER: any = {};
     )
   );
 
-  // step 2: generate call data for the user to sign and submit to the chain
+  // Setup immutables
   const immutables = {
     orderHash,
     hashlock: hashLock,
@@ -91,6 +120,7 @@ let GLOBAL_ORDER: any = {};
     timelocks,
   };
 
+  // Initialize global order
   GLOBAL_ORDER = {
     orderHash,
     hashLock,
@@ -127,8 +157,40 @@ let GLOBAL_ORDER: any = {};
     secret,
     status: "pending",
   };
-  console.log(GLOBAL_ORDER);
 
+  // Log initial setup
+  logStage("Cross-Chain Transfer Initiated", {
+    source: {
+      chain: "Avalanche Testnet",
+      chainId: orderRequest.srcChainId,
+      token: orderRequest.srcToken,
+      amount: orderRequest.srcAmount,
+      maker: orderRequest.maker,
+    },
+    destination: {
+      chain: "Sui Testnet",
+      chainId: orderRequest.dstChainId,
+      token: orderRequest.dstToken,
+      amount: orderRequest.dstAmount,
+      recipient: orderRequest.dstRecipient,
+    },
+    security: {
+      hashLock,
+      timelocks: {
+        withdrawal: dstWithdrawal,
+        publicWithdrawal: dstPublicWithdrawal,
+        cancellation: dstCancellation,
+      },
+      safetyDeposit: {
+        evm: SAFETY_DEPOSIT["evm"],
+        sui: SAFETY_DEPOSIT["sui"],
+      },
+    },
+  });
+
+  logOrderDetails(GLOBAL_ORDER);
+
+  logStage("CHECKING TOKEN APPROVALS");
   // now check user have given proper approval to the factory contract or not
   const userWallet = getEvmWallet(
     "maker",
@@ -143,6 +205,7 @@ let GLOBAL_ORDER: any = {};
   );
   if (!hasBalance) throw new Error("Insufficient balance");
   if (!hasAllowance) {
+    logStage("Approving Token Transfer");
     const tokenContract = new ethers.Contract(ZeroAddress, ERC20_ABI);
     const tx = await userWallet.sendTransaction({
       to: orderRequest.srcToken,
@@ -152,20 +215,42 @@ let GLOBAL_ORDER: any = {};
       ]),
     });
     await tx.wait(1);
+    logTx(orderRequest.srcChainId, tx.hash, "Token Approval");
+  } else {
+    logStage("Token approval already granted");
   }
 
-  // Step 3: user will send order to the market
+  // After approval check and before source escrow creation
+  logStage("CROSS-CHAIN TRANSFER FLOW");
+  console.log("\n📋 Transfer Steps:");
+  console.log("1. Create Source Chain Escrow (Avalanche)");
+  console.log("2. Create Destination Chain Escrow (Sui)");
+  console.log("3. Process Withdrawals on Both Chains");
+  console.log("4. Complete Transfer\n");
+
+  // Step 3: Source Chain Escrow Creation
   {
+    logStage("Creating Source Escrow", {
+      chain: "Avalanche",
+      token: orderRequest.srcToken,
+      amount: orderRequest.srcAmount,
+    });
+
+    const srcFactory = new ethers.Contract(
+      getContractAddress(orderRequest.srcChainId, "escrowFactory"),
+      ESCROW_FACTORY_ABI,
+      new ethers.JsonRpcProvider(chainConfig.rpc)
+    );
+
     const tx = await userWallet.sendTransaction({
       to: getContractAddress(orderRequest.srcChainId, "escrowFactory"),
-      data: factory.interface.encodeFunctionData("createSrcEscrow", [
+      data: srcFactory.interface.encodeFunctionData("createSrcEscrow", [
         immutables,
       ]),
       value: immutables.safetyDeposit,
     });
     await tx.wait(1);
-    console.log("src tx created with tx hash", tx.hash);
-    await sleep(2000);
+
     const { timelocks, escrow } = await readEventFromEvmTx(
       tx.hash,
       chainConfig
@@ -173,10 +258,18 @@ let GLOBAL_ORDER: any = {};
     GLOBAL_ORDER.sourceInfo.timelocks = timelocks;
     GLOBAL_ORDER.sourceInfo.txHashes.srcEscrow = tx.hash;
     GLOBAL_ORDER.sourceInfo.escrowAddress = escrow;
+
+    logTx(orderRequest.srcChainId, tx.hash, "Source Escrow Created");
   }
 
-  // Step 4: now resolver will deploy the dst escrow
+  // Step 4: Destination Chain (Sui) Escrow Creation
   {
+    logStage("Creating Destination Escrow", {
+      chain: "Sui",
+      token: orderRequest.dstToken,
+      amount: orderRequest.dstAmount,
+    });
+
     const signer = getSuiWallet("taker");
     const client: SuiClient = getProvider(
       getChainConfigFromChainId(orderRequest.dstChainId)
@@ -238,8 +331,6 @@ let GLOBAL_ORDER: any = {};
       Number(orderRequest.dstAmount),
       txb
     );
-    console.log(orderRequest.dstToken);
-    console.log(`0x2::coin::Coin<${orderRequest.dstToken}>`);
 
     txb.moveCall({
       target: `${packageId}::fusion_plus::create_dst_escrow`,
@@ -254,91 +345,93 @@ let GLOBAL_ORDER: any = {};
     });
 
     const tx = await signAndSendTx(client, txb, signer);
-    await sleep(1000);
-    {
-      const receipt = await client.getTransactionBlock({
-        digest: tx.digest,
-        options: {
-          showEvents: true,
-        },
-      });
-      const dstEscrowCreatedEvent = receipt.events?.[0]?.parsedJson as any;
-      console.log(dstEscrowCreatedEvent);
+    const receipt = await client.getTransactionBlock({
+      digest: tx.digest,
+      options: { showEvents: true },
+    });
+    const dstEscrowCreatedEvent = receipt.events?.[0]?.parsedJson as any;
 
-      GLOBAL_ORDER.destinationInfo.timelocks = ethers.hexlify(
-        Uint8Array.from(dstEscrowCreatedEvent.hashlock)
-      );
-      GLOBAL_ORDER.destinationInfo.txHashes.dstEscrow = tx.digest;
-      GLOBAL_ORDER.destinationInfo.escrowAddress =
-        dstEscrowCreatedEvent.escrow_id;
-      GLOBAL_ORDER.destinationInfo.timelocks = dstEscrowCreatedEvent.timelocks;
-    }
-    console.log(GLOBAL_ORDER);
+    GLOBAL_ORDER.destinationInfo.timelocks = ethers.hexlify(
+      Uint8Array.from(dstEscrowCreatedEvent.hashlock)
+    );
+    GLOBAL_ORDER.destinationInfo.txHashes.dstEscrow = tx.digest;
+    GLOBAL_ORDER.destinationInfo.escrowAddress =
+      dstEscrowCreatedEvent.escrow_id;
+    GLOBAL_ORDER.destinationInfo.timelocks = dstEscrowCreatedEvent.timelocks;
+
+    logTx(orderRequest.dstChainId, tx.digest, "Destination Escrow Created");
   }
 
-  await sleep(5000); // wait for 5 seconds
+  await sleep(5000);
 
-  // Step 5: now resolver will move fund from src escrow  and dst escrow
+  // Step 5: Process Withdrawals
+  logStage("STEP 3: PROCESSING WITHDRAWALS");
+  console.log("\n🔄 Initiating withdrawals in sequence:");
+  console.log("1. First on Sui (destination chain)");
+  console.log("2. Then on Avalanche (source chain)");
+
+  // Destination (Sui) withdrawal
   {
-    // try to withdraw from dst first to see if sui is working or not
-    const signer = getSuiWallet("taker");
-    const client: SuiClient = getProvider(
+    logStage("Processing Destination Withdrawal", { chain: "Sui" });
+    const dstSigner = getSuiWallet("taker");
+    const dstClient: SuiClient = getProvider(
       getChainConfigFromChainId(orderRequest.dstChainId)
     ) as SuiClient;
-    const contractAddress = getContractAddress(
+    const dstContractAddress = getContractAddress(
       orderRequest.dstChainId,
       "escrowFactory"
     );
-    const packageId = ethers.hexlify(
-      ethers.getBytes(contractAddress).slice(0, 32)
+    const dstPackageId = ethers.hexlify(
+      ethers.getBytes(dstContractAddress).slice(0, 32)
     );
-    const objectId = ethers.hexlify(
-      ethers.getBytes(contractAddress).slice(32, 64)
+    const dstObjectId = ethers.hexlify(
+      ethers.getBytes(dstContractAddress).slice(32, 64)
     );
 
-    const txb = new Transaction();
-    const oimmutables = txb.moveCall({
-      target: `${packageId}::base_escrow::new`,
+    const dstTxb = new Transaction();
+    const dstOimmutables = dstTxb.moveCall({
+      target: `${dstPackageId}::base_escrow::new`,
       arguments: [
         bcs.vector(bcs.u8()).serialize(ethers.getBytes(orderHash).map(Number)), // order_hash
         bcs.vector(bcs.u8()).serialize(ethers.getBytes(hashLock).map(Number)), // hashlock
-        txb.pure.u256(getSuiWallet("taker").getPublicKey().toSuiAddress()), // maker
-        txb.pure.u256(orderRequest.dstRecipient), // taker
-        txb.pure.u256(orderRequest.dstToken.split("::")[0]), // token
-        txb.pure.u64(orderRequest.dstAmount), // amount
-        txb.pure.u64(SAFETY_DEPOSIT["sui"]), // safety_deposit
-        txb.pure.u256(GLOBAL_ORDER.destinationInfo.timelocks), // timelocks
+        dstTxb.pure.u256(dstSigner.getPublicKey().toSuiAddress()), // maker
+        dstTxb.pure.u256(orderRequest.dstRecipient), // taker
+        dstTxb.pure.u256(orderRequest.dstToken.split("::")[0]), // token
+        dstTxb.pure.u64(orderRequest.dstAmount), // amount
+        dstTxb.pure.u64(SAFETY_DEPOSIT["sui"]), // safety_deposit
+        dstTxb.pure.u256(GLOBAL_ORDER.destinationInfo.timelocks), // timelocks
       ],
     });
-    console.log(secret);
 
-    txb.moveCall({
-      target: `${packageId}::dst_escrow::public_withdraw`,
+    dstTxb.moveCall({
+      target: `${dstPackageId}::dst_escrow::public_withdraw`,
       arguments: [
-        txb.object(GLOBAL_ORDER.destinationInfo.escrowAddress), // escrow object id
+        dstTxb.object(GLOBAL_ORDER.destinationInfo.escrowAddress), // escrow object id
         bcs.vector(bcs.u8()).serialize(ethers.getBytes(secret).map(Number)),
-        oimmutables,
+        dstOimmutables,
       ],
       typeArguments: [orderRequest.dstToken],
     });
-    const tx = await signAndSendTx(client, txb, signer);
-    console.log(tx.digest);
+    const dstTx = await signAndSendTx(dstClient, dstTxb, dstSigner);
+    GLOBAL_ORDER.destinationInfo.txHashes.dstWithdrawal = dstTx.digest;
+    logTx(orderRequest.dstChainId, dstTx.digest, "Sui Withdrawal Complete");
   }
 
-  // withdraw from src escrow
+  // Source (Avalanche) withdrawal
   {
-    const signer = getEvmWallet(
+    logStage("Processing Source Withdrawal", { chain: "Avalanche" });
+    const srcSigner = getEvmWallet(
       "taker",
       new ethers.JsonRpcProvider(chainConfig.rpc)
     );
-    const provider = new ethers.JsonRpcProvider(chainConfig.rpc);
-    const factory = new ethers.Contract(
+
+    const srcEscrowContract = new ethers.Contract(
       ZeroAddress,
       SRC_ESCROW_ABI,
       new ethers.JsonRpcProvider(chainConfig.rpc)
     );
-    // // Create escrow immutables
-    const immutables = {
+
+    const withdrawImmutables = {
       orderHash,
       hashlock: hashLock,
       maker: BigInt(orderRequest.maker),
@@ -348,24 +441,53 @@ let GLOBAL_ORDER: any = {};
       safetyDeposit: BigInt(SAFETY_DEPOSIT[chainConfig.type]).toString(),
       timelocks: GLOBAL_ORDER.sourceInfo.timelocks,
     };
+
     const calldata = {
-      data: factory.interface.encodeFunctionData("withdraw", [
+      data: srcEscrowContract.interface.encodeFunctionData("withdraw", [
         secret,
-        immutables,
+        withdrawImmutables,
       ]),
       value: 0,
       to: GLOBAL_ORDER.sourceInfo.escrowAddress,
     };
-    const tx = await signer
+
+    const srcTx = await srcSigner
       .connect(new ethers.JsonRpcProvider(chainConfig.rpc))
       .sendTransaction({
         ...calldata,
         gasLimit: 6000000,
         gasPrice: ethers.parseUnits("10", "gwei"),
       });
-    await tx.wait(1);
-    console.log(tx);
+    await srcTx.wait(1);
+    GLOBAL_ORDER.sourceInfo.txHashes.srcWithdrawal = srcTx.hash;
+    logTx(orderRequest.srcChainId, srcTx.hash, "Avalanche Withdrawal Complete");
   }
+
+  logStage("CROSS-CHAIN TRANSFER COMPLETED");
+  console.log("\n✅ Transfer Summary:");
+  console.log("\n📤 Source Chain (Avalanche):");
+  console.log(
+    `- Escrow Creation: ${GLOBAL_ORDER.sourceInfo.txHashes.srcEscrow}`
+  );
+  console.log(
+    `- Withdrawal: ${GLOBAL_ORDER.sourceInfo.txHashes.srcWithdrawal}`
+  );
+  console.log(`- Explorer: ${EXPLORERS[orderRequest.srcChainId]}`);
+
+  console.log("\n📥 Destination Chain (Sui):");
+  console.log(
+    `- Escrow Creation: ${GLOBAL_ORDER.destinationInfo.txHashes.dstEscrow}`
+  );
+  console.log(
+    `- Withdrawal: ${GLOBAL_ORDER.destinationInfo.txHashes.dstWithdrawal}`
+  );
+  console.log(`- Explorer: ${EXPLORERS[orderRequest.dstChainId]}`);
+
+  console.log("\n🔐 Hash Lock Details:");
+  console.log(`- Hash: ${hashLock}`);
+  console.log(`- Secret (used): ${secret}`);
+
+  logOrderDetails(GLOBAL_ORDER);
 })();
 
 async function checkTokenBalanceAndAllowance(
