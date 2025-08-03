@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.23;
+pragma solidity ^0.8.23;
 
 import {Clones} from "openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
@@ -58,10 +58,14 @@ abstract contract BaseEscrowFactory is IEscrowFactory {
             block.timestamp
         );
 
-        emit SrcEscrowCreated(updatedImmutables);
-
         bytes32 salt = updatedImmutables.hashMem();
-        address escrow = _deployEscrow(salt, 0, ESCROW_SRC_IMPLEMENTATION);
+        address escrow = _deployEscrow(
+            salt,
+            nativeAmount,
+            ESCROW_SRC_IMPLEMENTATION
+        );
+        emit SrcEscrowCreated(updatedImmutables, escrow);
+
         if (token != address(0)) {
             IERC20(token).safeTransferFrom(
                 immutables.maker.get(),
@@ -120,9 +124,11 @@ abstract contract BaseEscrowFactory is IEscrowFactory {
         }
 
         emit DstEscrowCreated(
+            immutables.orderHash,
             escrow,
             dstImmutables.hashlock,
-            dstImmutables.taker
+            dstImmutables.taker,
+            immutables.timelocks
         );
     }
 

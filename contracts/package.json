@@ -1,0 +1,38 @@
+{
+  "name": "sui_fusion_plus",
+  "version": "1.0.0",
+  "description": "1inch fusion+ on sui chain",
+  "author": "Priyanshu Mishra <priyanshu1123@gmail.com>",
+  "license": "MIT",
+  "private": true,
+  "main": "scripts/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "deploy": "ts-node scripts/index.ts deploy",
+    "order": "ts-node scripts/index.ts order",
+    "list": "ts-node scripts/index.ts list",
+    "start": "node dist/index.js"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^24.1.0",
+    "@types/tmp": "^0.2.6",
+    "@types/uuid": "^9.0.0",
+    "@types/yargs": "^17.0.33",
+    "fs-extra": "^11.3.0",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@mysten/bcs": "^1.7.0",
+    "@mysten/sui": "^1.37.0",
+    "bech32": "^2.0.0",
+    "child_process": "^1.0.2",
+    "decimal.js": "^10.6.0",
+    "dotenv": "^17.2.1",
+    "ethers": "^6.15.0",
+    "tmp": "^0.2.3",
+    "ts-node": "^10.9.1",
+    "uuid": "^9.0.0",
+    "yargs": "^18.0.0"
+  }
+}

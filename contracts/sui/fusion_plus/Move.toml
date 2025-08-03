@@ -1,0 +1,13 @@
+[package]
+name = "fusion_plus"
+version = "1.0.0"
+edition = "2024.beta"          # To use the Move 2024 edition, currently in alpha
+license = "MIT"                # e.g., "MIT", "GPL", "Apache 2.0"
+authors = ["Priyanshu Mishra"]
+published-at = "0x77534544bcd66099015d83854c9e604370ae872e93550be4f0f842573c813533"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
+
+[addresses]
+fusion_plus = "0x77534544bcd66099015d83854c9e604370ae872e93550be4f0f842573c813533"

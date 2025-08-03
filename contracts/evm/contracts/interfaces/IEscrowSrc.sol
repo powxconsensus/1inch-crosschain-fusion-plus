@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.0;
 
-import { IEscrow } from "./IEscrow.sol";
+import {IEscrow} from "./IEscrow.sol";
 
 /**
  * @title Source Escrow interface for cross-chain atomic swap.
@@ -18,7 +18,11 @@ interface IEscrowSrc is IEscrow {
      * @param target The address to withdraw the funds to.
      * @param immutables The immutables of the escrow contract.
      */
-    function withdrawTo(bytes32 secret, address target, IEscrow.Immutables calldata immutables) external;
+    function withdrawTo(
+        bytes32 secret,
+        address target,
+        IEscrow.Immutables calldata immutables
+    ) external;
 
     /**
      * @notice Withdraws funds to the taker.
@@ -26,7 +30,10 @@ interface IEscrowSrc is IEscrow {
      * @param secret The secret that unlocks the escrow.
      * @param immutables The immutables of the escrow contract.
      */
-    function publicWithdraw(bytes32 secret, Immutables calldata immutables) external;
+    function publicWithdraw(
+        bytes32 secret,
+        Immutables calldata immutables
+    ) external;
 
     /**
      * @notice Cancels the escrow and returns tokens to the maker.

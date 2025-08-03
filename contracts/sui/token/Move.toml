@@ -1,0 +1,13 @@
+[package]
+name = "token"
+version = "1.0.0"
+edition = "2024.beta"          # To use the Move 2024 edition, currently in alpha
+license = "MIT"                # e.g., "MIT", "GPL", "Apache 2.0"
+authors = ["Priyanshu Mishra"]
+published-at = "0xb089a394b5b0e2d2672518355c8931966602b3b67f280bf86e6b69d3508262dc"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
+
+[addresses]
+token = "0xb089a394b5b0e2d2672518355c8931966602b3b67f280bf86e6b69d3508262dc"
