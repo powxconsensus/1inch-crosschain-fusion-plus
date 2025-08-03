@@ -7,6 +7,18 @@ import { WalletContextState } from '@suiet/wallet-kit';
 
 type HexString = `0x${string}`;
 
+interface TransactionParams {
+  to: string;
+  value: string;
+  chain: ChainConfig;
+  data: string;
+  gasLimit?: number;
+  onSuccess?: (hash: string) => void;
+  onError?: (error: Error) => void;
+}
+
+type SendTransactionResult = ReturnType<SendTransactionMutate<Config, unknown>>;
+
 interface WalletState {
   activeChain: ChainConfig | null;
   address: string | null;
@@ -26,19 +38,7 @@ interface WalletState {
     transport: SendTransactionMutate<Config, unknown> | null;
   }) => void;
   disconnect: () => void;
-  sendTransaction: ({
-    to,
-    value,
-    chain,
-    data,
-    gasLimit,
-  }: {
-    to: string;
-    value: string;
-    chain: ChainConfig;
-    data: string;
-    gasLimit?: number;
-  }) => void;
+  sendTransaction: (params: TransactionParams) => void;
 }
 
 export const useWalletStore = create<WalletState>((set, get) => ({
@@ -55,23 +55,39 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       address: null,
       isConnected: false,
     }),
-  sendTransaction: ({ to, value, chain, data, gasLimit }) => {
+  sendTransaction: async ({ to, value, chain, data, gasLimit, onSuccess, onError }) => {
     switch (chain.chainType) {
       case ChainType.EVM: {
-        return (get().transport as SendTransactionMutate<Config, unknown>)?.({
-          to: to.startsWith('0x') ? (to as HexString) : `0x${to}`,
-          value: BigInt(value),
-          // chainId: Number(chain.chainId),
-          data: data.startsWith('0x') ? (data as HexString) : (data as `0x${string}`),
-          gas: BigInt(gasLimit ? gasLimit : 500000),
-        });
+        try {
+          const transport = get().transport as SendTransactionMutate<Config, unknown>;
+          if (!transport) {
+            throw new Error('Transport not available');
+          }
+
+          const result = (await transport({
+            to: to.startsWith('0x') ? (to as HexString) : `0x${to}`,
+            value: BigInt(value),
+            chainId: Number(chain.chainId),
+            data: data.startsWith('0x') ? (data as HexString) : (data as `0x${string}`),
+          })) as unknown;
+
+          if (typeof result === 'string') {
+            onSuccess?.(result);
+          } else {
+            throw new Error('Invalid transaction result');
+          }
+        } catch (error) {
+          onError?.(error as Error);
+        }
+        break;
       }
       case ChainType.SUI: {
         // TODO: Implement Sui transport
-        return;
+        break;
       }
       default: {
-        throw new Error('Invalid chain type');
+        const error = new Error('Invalid chain type');
+        onError?.(error);
       }
     }
   },

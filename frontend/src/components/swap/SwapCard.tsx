@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowDown, Settings, User } from 'lucide-react';
 import TokenInput from './TokenInput';
 import ChainSelector from './ChainSelector';
@@ -63,6 +63,23 @@ interface OrderCalldata {
 
 interface CreateOrderResponse {
   calldata: OrderCalldata;
+  orderHash: string;
+}
+
+type TransactionStatus =
+  | 'idle'
+  | 'approving'
+  | 'creating_order'
+  | 'swapping'
+  | 'waiting_for_escrow'
+  | 'sharing_secret'
+  | 'completing';
+
+type OrderStatus = 'PENDING' | 'DEST_ESCROW_CREATED' | 'COMPLETED' | 'FAILED';
+
+interface OrderStatusResponse {
+  status: OrderStatus;
+  orderHash: string;
 }
 
 const SwapCard = () => {
@@ -79,7 +96,11 @@ const SwapCard = () => {
   const [recipient, setRecipient] = useState<string>('');
   const [quoteResponse, setQuoteResponse] = useState<QuoteResponseDto | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isApproving, setIsApproving] = useState(false);
+  const [txStatus, setTxStatus] = useState<TransactionStatus>('idle');
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [orderHash, setOrderHash] = useState<string | null>(null);
+  const [orderStatus, setOrderStatus] = useState<OrderStatus | null>(null);
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
   const { activeChain, isConnected, address, sendTransaction } = useWalletStore();
   // Update source chain and token when wallet chain changes
@@ -149,6 +170,71 @@ const SwapCard = () => {
     isConnected,
   ]);
 
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [pollingInterval]);
+
+  const checkOrderStatus = async (hash: string) => {
+    try {
+      const response = await fetch(`http://localhost:3000/orders/status/${hash}`);
+      if (!response.ok) throw new Error('Failed to fetch order status');
+
+      const data: OrderStatusResponse = await response.json();
+      setOrderStatus(data.status);
+
+      if (data.status === 'DEST_ESCROW_CREATED') {
+        if (pollingInterval) clearInterval(pollingInterval);
+        await shareSecret(hash);
+      } else if (data.status === 'COMPLETED') {
+        if (pollingInterval) clearInterval(pollingInterval);
+        setTxStatus('idle');
+        setOrderHash(null);
+        setOrderStatus(null);
+      }
+    } catch (error) {
+      console.error('Error checking order status:', error);
+      setError('Error checking order status');
+    }
+  };
+
+  const startPolling = (hash: string) => {
+    setOrderHash(hash);
+    // Poll every 5 seconds
+    const interval = setInterval(() => checkOrderStatus(hash), 5000);
+    setPollingInterval(interval);
+  };
+
+  const shareSecret = async (hash: string) => {
+    try {
+      setTxStatus('sharing_secret');
+      const secret = localStorage.getItem('swap_secret');
+      if (!secret) throw new Error('Secret not found');
+
+      const response = await fetch(`http://localhost:3000/orders/share-secret/${hash}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ secret }),
+      });
+
+      if (!response.ok) throw new Error('Failed to share secret');
+
+      setTxStatus('completing');
+      // Resume polling to wait for completion
+      startPolling(hash);
+    } catch (error) {
+      console.error('Error sharing secret:', error);
+      setError('Error sharing secret');
+      setTxStatus('idle');
+    }
+  };
+
   const checkBalance = async () => {
     if (!address || !fromState.token.address) return false;
 
@@ -195,37 +281,68 @@ const SwapCard = () => {
           new ethers.JsonRpcProvider(fromState.chain.rpcUrl),
         );
         const amount = ethers.parseUnits(fromState.amount, fromState.token.decimals);
-        console.log(amount.toString());
+        console.log('Amount to approve:', amount.toString());
 
-        // Check current allowance
         const rawAllowance = await tokenContract.allowance(address, quoteResponse.escrowFactory);
         const currentAllowance = new BigNumber(rawAllowance.toString());
         if (currentAllowance.isLessThan(amount)) {
-          setIsApproving(true);
+          setTxStatus('approving');
           const calldata = tokenContract.interface.encodeFunctionData('approve', [
             quoteResponse.escrowFactory,
             amount,
           ]);
           console.log('Approval calldata:', calldata);
-          sendTransaction({
-            to: fromState.token.address,
-            value: '0',
-            chain: fromState.chain,
-            data: calldata,
-            gasLimit: 800000,
+
+          return new Promise((resolve, reject) => {
+            try {
+              sendTransaction({
+                to: fromState.token.address,
+                value: '0',
+                chain: fromState.chain,
+                data: calldata,
+                gasLimit: 800000,
+                onSuccess: async (hash: string) => {
+                  console.log('Approval tx hash:', hash);
+                  setTxHash(hash);
+                  // Wait for a few seconds to ensure the approval is processed
+                  await new Promise((r) => setTimeout(r, 5000));
+                  // Verify the allowance again
+                  const newAllowance = await tokenContract.allowance(
+                    address,
+                    quoteResponse.escrowFactory,
+                  );
+                  if (new BigNumber(newAllowance.toString()).isLessThan(amount)) {
+                    setError('Approval not confirmed. Please try again.');
+                    setTxStatus('idle');
+                    reject(new Error('Approval not confirmed'));
+                    return;
+                  }
+                  resolve(true);
+                },
+                onError: (error: Error) => {
+                  console.error('Approval error:', error);
+                  setError('Approval failed: ' + error.message);
+                  setTxStatus('idle');
+                  reject(error);
+                },
+              });
+            } catch (error) {
+              console.error('Send transaction error:', error);
+              setError('Failed to send approval transaction');
+              setTxStatus('idle');
+              reject(error);
+            }
           });
-          setIsApproving(false);
         }
         return true;
       } else if (fromState.chain.chainType === ChainType.SUI) {
         // TODO: Implement Sui approval if needed
-        // For Sui, we might not need explicit approval
         return true;
       }
     } catch (error) {
       console.error('Error during approval:', error);
       setError('Error during approval');
-      setIsApproving(false);
+      setTxStatus('idle');
       return false;
     }
   };
@@ -235,31 +352,30 @@ const SwapCard = () => {
 
     try {
       setError(null);
+      setTxHash(null);
 
       // Check balance
       const hasBalance = await checkBalance();
       if (!hasBalance) return;
 
       // Check and handle approvals
-      const isApproved = await checkAndApprove();
-      if (!isApproved) return;
-
-      const secret = ethers.hexlify(ethers.randomBytes(64));
-      localStorage.setItem('swap_secret', secret);
-
-      console.log('Swap initiated', {
-        fromChain: fromState.chain,
-        toChain: toState.chain,
-        fromAmount: fromState.amount,
-        toAmount: toState.amount,
-        fromToken: fromState.token,
-        toToken: toState.token,
-        userAddress: address,
-        recipient,
-        hashLock: ethers.keccak256(secret),
-      });
+      try {
+        const isApproved = await checkAndApprove();
+        if (!isApproved) {
+          console.log('Approval failed or was rejected');
+          return;
+        }
+      } catch (error) {
+        console.error('Approval process failed:', error);
+        return;
+      }
 
       // Create order
+      setTxStatus('creating_order');
+      const secret = ethers.hexlify(ethers.randomBytes(32));
+      localStorage.setItem('swap_secret', secret);
+      console.log('swap_secret', secret);
+
       const createOrderResponse = await fetch('http://localhost:3000/orders/create', {
         method: 'POST',
         headers: {
@@ -284,19 +400,6 @@ const SwapCard = () => {
               decimals: toState.token.decimals,
             },
           },
-          sourceChainId: fromState.chain.chainId,
-          destChainId: toState.chain.chainId,
-          sourceToken: fromState.token.address,
-          destToken: toState.token.address,
-          sourceAmount: {
-            amount: fromState.amount,
-            decimals: fromState.token.decimals,
-          },
-          minDestAmount: {
-            amount: toState.amount,
-            decimals: toState.token.decimals,
-          },
-          timeLock: Math.floor(Date.now() / 1000 + 3600).toString(), // 1 hour from now
         }),
       });
 
@@ -307,23 +410,82 @@ const SwapCard = () => {
       const orderData: CreateOrderResponse = await createOrderResponse.json();
       console.log('Order created with calldata:', orderData);
 
-      // Send the transaction with the received calldata
-      sendTransaction({
-        to: orderData.calldata.to,
-        value: orderData.calldata.value,
-        chain: fromState.chain,
-        data: orderData.calldata.data,
-        gasLimit: orderData.calldata.gasLimit,
+      // Send the swap transaction
+      setTxStatus('swapping');
+      await new Promise((resolve, reject) => {
+        try {
+          sendTransaction({
+            to: orderData.calldata.to,
+            value: orderData.calldata.value,
+            chain: fromState.chain,
+            data: orderData.calldata.data,
+            gasLimit: orderData.calldata.gasLimit,
+            onSuccess: (hash: string) => {
+              console.log('Swap tx hash:', hash);
+              setTxHash(hash);
+              setTxStatus('waiting_for_escrow');
+              // Start polling for order status
+              startPolling(orderData.orderHash);
+              resolve(hash);
+            },
+            onError: (error: Error) => {
+              console.error('Swap error:', error);
+              setError('Swap failed: ' + error.message);
+              setTxStatus('idle');
+              reject(error);
+            },
+          });
+        } catch (error) {
+          console.error('Send transaction error:', error);
+          setError('Failed to send swap transaction');
+          setTxStatus('idle');
+          reject(error);
+        }
       });
     } catch (error) {
       console.error('Error during swap:', error);
       setError('Error during swap');
+      setTxStatus('idle');
     }
   };
 
   const handleSwapDirection = () => {
     setFromState(toState);
     setToState(fromState);
+  };
+
+  const getButtonText = () => {
+    if (!isConnected) return 'Connect Wallet to Swap';
+    if (!recipient) return 'Enter Recipient Address';
+    switch (txStatus) {
+      case 'approving':
+        return 'Approving...';
+      case 'creating_order':
+        return 'Creating Order...';
+      case 'swapping':
+        return 'Swapping...';
+      case 'waiting_for_escrow':
+        return 'Waiting for Escrow...';
+      case 'sharing_secret':
+        return 'Sharing Secret...';
+      case 'completing':
+        return 'Completing Swap...';
+      default:
+        return 'Approve and Swap';
+    }
+  };
+
+  const getProgressPercentage = () => {
+    const states = [
+      'approving',
+      'creating_order',
+      'swapping',
+      'waiting_for_escrow',
+      'sharing_secret',
+      'completing',
+    ];
+    const currentIndex = states.indexOf(txStatus as string);
+    return currentIndex === -1 ? 0 : ((currentIndex + 1) / states.length) * 100;
   };
 
   return (
@@ -424,28 +586,52 @@ const SwapCard = () => {
           </div>
         )}
 
-        {/* Swap Button */}
+        {txHash && (
+          <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-500 text-sm">
+            Transaction Hash:{' '}
+            <a
+              href={`${fromState.chain.blockExplorer}/tx/${txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline"
+            >
+              {txHash.slice(0, 6)}...{txHash.slice(-4)}
+            </a>
+          </div>
+        )}
+
+        {txStatus !== 'idle' && (
+          <div className="mt-4">
+            <div className="flex justify-between mb-2">
+              <span className="text-sm text-[#94a3b8]">{getButtonText()}</span>
+              <span className="text-sm text-[#94a3b8]">{Math.round(getProgressPercentage())}%</span>
+            </div>
+            <div className="h-2 bg-[#1e293b] rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-[#3b82f6]"
+                initial={{ width: 0 }}
+                animate={{ width: `${getProgressPercentage()}%` }}
+                transition={{ duration: 0.5 }}
+              />
+            </div>
+          </div>
+        )}
+
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          disabled={!isConnected || !recipient || isApproving}
+          disabled={!isConnected || !recipient || txStatus !== 'idle'}
           className={`
             w-full mt-4 py-4 rounded-xl font-semibold transition-all
             ${
-              isConnected && recipient && !isApproving
+              isConnected && recipient && txStatus === 'idle'
                 ? 'bg-[#3b82f6] hover:bg-[#2563eb] text-white cursor-pointer'
                 : 'bg-[#1e293b] text-[#64748b] cursor-not-allowed'
             }
           `}
           onClick={handleSwap}
         >
-          {!isConnected
-            ? 'Connect Wallet to Swap'
-            : !recipient
-              ? 'Enter Recipient Address'
-              : isApproving
-                ? 'Approving...'
-                : 'Approve and Swap'}
+          {getButtonText()}
         </motion.button>
       </div>
     </div>
