@@ -1,0 +1,272 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "accessToken",
+        "type": "address",
+        "internalType": "contract IERC20"
+      },
+      {
+        "name": "rescueDelaySrc",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      { "name": "rescueDelayDst", "type": "uint32", "internalType": "uint32" }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "ESCROW_DST_IMPLEMENTATION",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "ESCROW_SRC_IMPLEMENTATION",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "addressOfEscrowDst",
+    "inputs": [
+      {
+        "name": "immutables",
+        "type": "tuple",
+        "internalType": "struct IBaseEscrow.Immutables",
+        "components": [
+          {
+            "name": "orderHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "hashlock",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          { "name": "maker", "type": "uint256", "internalType": "Address" },
+          { "name": "taker", "type": "uint256", "internalType": "Address" },
+          { "name": "token", "type": "uint256", "internalType": "Address" },
+          { "name": "amount", "type": "uint256", "internalType": "uint256" },
+          {
+            "name": "safetyDeposit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "timelocks",
+            "type": "uint256",
+            "internalType": "Timelocks"
+          }
+        ]
+      }
+    ],
+    "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "addressOfEscrowSrc",
+    "inputs": [
+      {
+        "name": "immutables",
+        "type": "tuple",
+        "internalType": "struct IBaseEscrow.Immutables",
+        "components": [
+          {
+            "name": "orderHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "hashlock",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          { "name": "maker", "type": "uint256", "internalType": "Address" },
+          { "name": "taker", "type": "uint256", "internalType": "Address" },
+          { "name": "token", "type": "uint256", "internalType": "Address" },
+          { "name": "amount", "type": "uint256", "internalType": "uint256" },
+          {
+            "name": "safetyDeposit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "timelocks",
+            "type": "uint256",
+            "internalType": "Timelocks"
+          }
+        ]
+      }
+    ],
+    "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "createDstEscrow",
+    "inputs": [
+      {
+        "name": "dstImmutables",
+        "type": "tuple",
+        "internalType": "struct IBaseEscrow.Immutables",
+        "components": [
+          {
+            "name": "orderHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "hashlock",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          { "name": "maker", "type": "uint256", "internalType": "Address" },
+          { "name": "taker", "type": "uint256", "internalType": "Address" },
+          { "name": "token", "type": "uint256", "internalType": "Address" },
+          { "name": "amount", "type": "uint256", "internalType": "uint256" },
+          {
+            "name": "safetyDeposit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "timelocks",
+            "type": "uint256",
+            "internalType": "Timelocks"
+          }
+        ]
+      },
+      {
+        "name": "srcCancellationTimestamp",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "createSrcEscrow",
+    "inputs": [
+      {
+        "name": "immutables",
+        "type": "tuple",
+        "internalType": "struct IBaseEscrow.Immutables",
+        "components": [
+          {
+            "name": "orderHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "hashlock",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          { "name": "maker", "type": "uint256", "internalType": "Address" },
+          { "name": "taker", "type": "uint256", "internalType": "Address" },
+          { "name": "token", "type": "uint256", "internalType": "Address" },
+          { "name": "amount", "type": "uint256", "internalType": "uint256" },
+          {
+            "name": "safetyDeposit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "timelocks",
+            "type": "uint256",
+            "internalType": "Timelocks"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "event",
+    "name": "DstEscrowCreated",
+    "inputs": [
+      {
+        "name": "escrow",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "hashlock",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "taker",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "Address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "SrcEscrowCreated",
+    "inputs": [
+      {
+        "name": "srcImmutables",
+        "type": "tuple",
+        "indexed": false,
+        "internalType": "struct IBaseEscrow.Immutables",
+        "components": [
+          {
+            "name": "orderHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "hashlock",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          { "name": "maker", "type": "uint256", "internalType": "Address" },
+          { "name": "taker", "type": "uint256", "internalType": "Address" },
+          { "name": "token", "type": "uint256", "internalType": "Address" },
+          { "name": "amount", "type": "uint256", "internalType": "uint256" },
+          {
+            "name": "safetyDeposit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "timelocks",
+            "type": "uint256",
+            "internalType": "Timelocks"
+          }
+        ]
+      }
+    ],
+    "anonymous": false
+  },
+  { "type": "error", "name": "FailedDeployment", "inputs": [] },
+  {
+    "type": "error",
+    "name": "InsufficientBalance",
+    "inputs": [
+      { "name": "balance", "type": "uint256", "internalType": "uint256" },
+      { "name": "needed", "type": "uint256", "internalType": "uint256" }
+    ]
+  },
+  { "type": "error", "name": "InsufficientEscrowBalance", "inputs": [] },
+  { "type": "error", "name": "InvalidCreationTime", "inputs": [] },
+  { "type": "error", "name": "InvalidPartialFill", "inputs": [] },
+  { "type": "error", "name": "InvalidSecretsAmount", "inputs": [] },
+  { "type": "error", "name": "SafeTransferFromFailed", "inputs": [] }
+]
